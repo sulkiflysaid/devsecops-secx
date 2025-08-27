@@ -5,76 +5,26 @@ on:
     branches: [ main ]  # jalan otomatis setiap push ke branch main
 
 jobs:
-  build:
-    name: Build & Test
-    runs-on: ubuntu-latest
+  deploy:
+    name: Deploy to Self-Hosted Server
+    runs-on: self-hosted
+    environment: production
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Run tests
-        run: |
-          if [ -d "tests" ]; then
-            ./vendor/bin/phpunit --testdox
-          else
-            echo "No tests found, skipping..."
-          fi
-
-      - name: Archive build
-        run: tar -czf build-artifact.tar.gz ./
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: php-build
-          path: build-artifact.tar.gz
-
-  deploy:
-    name: Deploy to Production
-    runs-on: self-hosted
-    needs: build
-    environment: production
-
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: php-build
-          path: ./build
-
-      - name: Extract build
-        run: |
-          tar -xzf ./build/build-artifact.tar.gz -C ./build
-
       - name: Sync files
         run: |
-          echo "Syncing files to /var/www/html..."
+          echo "Syncing repository code to /var/www/html..."
           sudo rsync -avz --delete \
             --exclude='.env' \
             --exclude='.git' \
             --chown=www-data:www-data \
-            ./build/ /var/www/html/
-
-      - name: Run migrations (Optional)
-        run: |
-          DEPLOY_PATH=/var/www/html
-          if [ -f "$DEPLOY_PATH/artisan" ]; then
-            php $DEPLOY_PATH/artisan migrate --force
-          fi
+            ./ /var/www/html/
 
       - name: Enable & Restart Apache
         run: |
           echo "Restarting Apache..."
           sudo systemctl enable apache2
-          sudo systemctl start apache2
           sudo systemctl restart apache2
-          sudo systemctl status apache2 --no-pager
