@@ -17,9 +17,6 @@ jobs:
         with:
           php-version: '8.2'
 
-      - name: Install Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
       - name: Run Tests
         run: |
           if [ -d "tests" ]; then
