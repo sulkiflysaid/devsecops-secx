@@ -17,11 +17,23 @@ jobs:
         with:
           php-version: '8.2'
 
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Archive Build
+        run: tar -czf build-artifact.tar.gz ./
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-build
+          path: build-artifact.tar.gz
+
   deploy:
     runs-on: self-hosted
     needs: build
     steps:
-      - name: Download Build Artifacts
+      - name: Download Build Artifact
         uses: actions/download-artifact@v4
         with:
           name: php-build
@@ -43,10 +55,13 @@ jobs:
 
       - name: Run Migration (Optional)
         run: |
+          DEPLOY_PATH=/var/www/html
           if [ -f "$DEPLOY_PATH/artisan" ]; then
             php $DEPLOY_PATH/artisan migrate --force
           fi
 
       - name: Restart Web Service
         run: |
-          sudo service apache2 restart
+          echo "Restarting Apache..."
+          sudo systemctl enable apache2
+          sudo systemctl restart apache2
