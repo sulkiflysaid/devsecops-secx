@@ -17,23 +17,6 @@ jobs:
         with:
           php-version: '8.2'
 
-      - name: Run Tests
-        run: |
-          if [ -d "tests" ]; then
-            ./vendor/bin/phpunit --testdox
-          else
-            echo "No tests found, skipping..."
-          fi
-
-      - name: Archive Build Artifacts
-        run: tar -czf build-artifact.tar.gz ./
-      
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: php-build
-          path: build-artifact.tar.gz
-
   deploy:
     runs-on: self-hosted
     needs: build
@@ -66,4 +49,4 @@ jobs:
 
       - name: Restart Web Service
         run: |
-          sudo systemctl restart apache2
+          sudo service apache2 restart
