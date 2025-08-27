@@ -1,80 +1,28 @@
-name: PHP CI/CD Pipeline
+name: Internal Network Deployment
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-
-      - name: Install Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Archive Build
-        run: tar -czf build-artifact.tar.gz ./
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: php-build
-          path: build-artifact.tar.gz
-
   deploy:
     runs-on: self-hosted
-    needs: build
+    environment: production
+
     steps:
-      - name: Download Build Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: php-build
-          path: ./build
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Extract Build
-        run: |
-          mkdir -p ./release
-          tar -xzf ./build/build-artifact.tar.gz -C ./release
+    # Sync files dengan sudo agar punya akses tulis
+    - name: Sync files
+      run: |
+        sudo rsync -avz --delete \
+          --exclude='.env' \
+          --exclude='.git' \
+          --chown=www-data:www-data \
+          ./ /var/www/html/
 
-      - name: Deploy Application
-        run: |
-          echo "Deploying PHP Application..."
-          DEPLOY_PATH=/var/www/html
-
-          sudo rsync -avz --delete \
-            --exclude='.env' \
-            --exclude='.git' \
-            --chown=www-data:www-data \
-            ./release/ $DEPLOY_PATH/
-
-      - name: Run Migration (Optional)
-        run: |
-          DEPLOY_PATH=/var/www/html
-          if [ -f "$DEPLOY_PATH/artisan" ]; then
-            php $DEPLOY_PATH/artisan migrate --force
-          fi
-
-      - name: Restart Apache/Nginx
-        run: |
-          echo "Restarting web service..."
-          if systemctl list-unit-files | grep -q apache2.service; then
-            sudo systemctl enable apache2
-            sudo systemctl restart apache2
-          elif systemctl list-unit-files | grep -q httpd.service; then
-            sudo systemctl enable httpd
-            sudo systemctl restart httpd
-          elif systemctl list-unit-files | grep -q nginx.service; then
-            sudo systemctl enable nginx
-            sudo systemctl restart nginx
-          else
-            echo "No web service found!"
-            exit 1
-          fi
+    # Restart service dengan sudo
+    - name: Restart services
+      run: |
+        sudo systemctl restart apache2
