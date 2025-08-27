@@ -12,6 +12,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Archive Build Artifacts
+        run: tar -czf build-artifact.tar.gz ./
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-build
+          path: build-artifact.tar.gz
+
   deploy:
     runs-on: self-hosted
     needs: build
@@ -38,10 +47,15 @@ jobs:
 
       - name: Run Migration (Optional)
         run: |
+          DEPLOY_PATH=/var/www/html
           if [ -f "$DEPLOY_PATH/artisan" ]; then
             php $DEPLOY_PATH/artisan migrate --force
           fi
 
-      - name: Restart Web Service
+      - name: Enable & Restart Apache
         run: |
-          sudo systemctl reload apache2 || sudo systemctl reload nginx
+          echo "Ensuring Apache is enabled and restarted..."
+          sudo systemctl enable apache2
+          sudo systemctl start apache2
+          sudo systemctl restart apache2
+          sudo systemctl status apache2 --no-pager
