@@ -12,31 +12,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-
-      - name: Install Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Run Tests
-        run: |
-          if [ -d "tests" ]; then
-            ./vendor/bin/phpunit --testdox
-          else
-            echo "No tests found, skipping..."
-          fi
-
-      - name: Archive Build Artifacts
-        run: tar -czf build-artifact.tar.gz ./
-      
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: php-build
-          path: build-artifact.tar.gz
-
   deploy:
     runs-on: self-hosted
     needs: build
