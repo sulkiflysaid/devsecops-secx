@@ -1,30 +1,72 @@
-name: Internal Network Deployment
+name: PHP CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]  # jalan otomatis setiap push ke branch main
+    branches:
+      - main  # jalankan pipeline saat push ke branch main
 
 jobs:
-  deploy:
-    name: Deploy to Self-Hosted Server
-    runs-on: self-hosted
-    environment: production
-
+  build:
+    runs-on: ubuntu-latest   # gunakan runner internal GitHub
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Sync files
-        run: |
-          echo "Syncing repository code to /var/www/html..."
-          sudo rsync -avz --delete \
-            --exclude='.env' \
-            --exclude='.git' \
-            --chown=www-data:www-data \
-            ./ /var/www/html/
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
 
-      - name: Enable & Restart Apache
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Run Tests
         run: |
-          echo "Restarting Apache..."
-          sudo systemctl enable apache2
+          if [ -d "tests" ]; then
+            ./vendor/bin/phpunit --testdox
+          else
+            echo "No tests found, skipping..."
+          fi
+
+      - name: Archive Build Artifacts
+        run: tar -czf build-artifact.tar.gz ./
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-build
+          path: build-artifact.tar.gz
+
+  deploy:
+    runs-on: self-hosted
+    needs: build
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: php-build
+          path: ./build
+
+      - name: Extract Build
+        run: |
+          tar -xzf ./build/build-artifact.tar.gz -C ./build
+
+      - name: Deploy Application
+        run: |
+          echo "Deploying PHP Application..."
+          DEPLOY_PATH=/var/www/html
+
+          rsync -av --delete --exclude='.env' ./build/ $DEPLOY_PATH/
+
+          sudo chown -R www-data:www-data $DEPLOY_PATH
+          sudo chmod -R 755 $DEPLOY_PATH
+
+      - name: Run Migration (Optional)
+        run: |
+          if [ -f "$DEPLOY_PATH/artisan" ]; then
+            php $DEPLOY_PATH/artisan migrate --force
+          fi
+
+      - name: Restart Web Service
+        run: |
           sudo systemctl restart apache2
