@@ -3,11 +3,11 @@ name: PHP CI/CD Pipeline
 on:
   push:
     branches:
-      - main  # jalankan pipeline saat push ke branch main
+      - main
 
 jobs:
   build:
-    runs-on: ubuntu-latest   # gunakan runner internal GitHub
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -41,17 +41,19 @@ jobs:
 
       - name: Extract Build
         run: |
-          tar -xzf ./build/build-artifact.tar.gz -C ./build
+          mkdir -p ./release
+          tar -xzf ./build/build-artifact.tar.gz -C ./release
 
       - name: Deploy Application
         run: |
           echo "Deploying PHP Application..."
           DEPLOY_PATH=/var/www/html
 
-          rsync -av --delete --exclude='.env' ./build/ $DEPLOY_PATH/
-
-          sudo chown -R www-data:www-data $DEPLOY_PATH
-          sudo chmod -R 755 $DEPLOY_PATH
+          sudo rsync -avz --delete \
+            --exclude='.env' \
+            --exclude='.git' \
+            --chown=www-data:www-data \
+            ./release/ $DEPLOY_PATH/
 
       - name: Run Migration (Optional)
         run: |
@@ -60,8 +62,19 @@ jobs:
             php $DEPLOY_PATH/artisan migrate --force
           fi
 
-      - name: Restart Web Service
+      - name: Restart Apache/Nginx
         run: |
-          echo "Restarting Apache..."
-          sudo systemctl enable apache2
-          sudo systemctl restart apache2
+          echo "Restarting web service..."
+          if systemctl list-unit-files | grep -q apache2.service; then
+            sudo systemctl enable apache2
+            sudo systemctl restart apache2
+          elif systemctl list-unit-files | grep -q httpd.service; then
+            sudo systemctl enable httpd
+            sudo systemctl restart httpd
+          elif systemctl list-unit-files | grep -q nginx.service; then
+            sudo systemctl enable nginx
+            sudo systemctl restart nginx
+          else
+            echo "No web service found!"
+            exit 1
+          fi
