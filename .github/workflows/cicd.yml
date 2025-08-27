@@ -1,0 +1,59 @@
+name: PHP CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main  # jalankan pipeline saat push ke branch main
+
+jobs:
+  build:
+    runs-on: self-hosted  # pakai self-hosted runner
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Run Tests
+        run: |
+          if [ -d "tests" ]; then
+            ./vendor/bin/phpunit --testdox
+          else
+            echo "No tests found, skipping..."
+          fi
+
+  deploy:
+    runs-on: self-hosted
+    needs: build
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy Application
+        run: |
+          echo "Deploying PHP Application..."
+          # Path aplikasi di server
+          DEPLOY_PATH=/var/www/html
+
+          # Hapus file lama kecuali .env
+          rsync -av --delete --exclude='.env' ./ $DEPLOY_PATH/
+
+          # Set permission
+          sudo chown -R www-data:www-data $DEPLOY_PATH
+          sudo chmod -R 755 $DEPLOY_PATH
+
+      - name: Run Migration (Optional)
+        run: |
+          if [ -f "artisan" ]; then
+            php artisan migrate --force
+          fi
+
+      - name: Restart Web Service
+        run: |
+          sudo systemctl reload apache2 || sudo systemctl reload nginx
