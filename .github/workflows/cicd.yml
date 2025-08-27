@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted  # pakai self-hosted runner
+    runs-on: ubuntu-latest   # gunakan runner internal GitHub
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -28,30 +28,43 @@ jobs:
             echo "No tests found, skipping..."
           fi
 
+      - name: Archive Build Artifacts
+        run: tar -czf build-artifact.tar.gz ./
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-build
+          path: build-artifact.tar.gz
+
   deploy:
     runs-on: self-hosted
     needs: build
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: php-build
+          path: ./build
+
+      - name: Extract Build
+        run: |
+          tar -xzf ./build/build-artifact.tar.gz -C ./build
 
       - name: Deploy Application
         run: |
           echo "Deploying PHP Application..."
-          # Path aplikasi di server
           DEPLOY_PATH=/var/www/html
 
-          # Hapus file lama kecuali .env
-          rsync -av --delete --exclude='.env' ./ $DEPLOY_PATH/
+          rsync -av --delete --exclude='.env' ./build/ $DEPLOY_PATH/
 
-          # Set permission
           sudo chown -R www-data:www-data $DEPLOY_PATH
           sudo chmod -R 755 $DEPLOY_PATH
 
       - name: Run Migration (Optional)
         run: |
-          if [ -f "artisan" ]; then
-            php artisan migrate --force
+          if [ -f "$DEPLOY_PATH/artisan" ]; then
+            php $DEPLOY_PATH/artisan migrate --force
           fi
 
       - name: Restart Web Service
