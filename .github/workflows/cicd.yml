@@ -1,61 +1,28 @@
-name: PHP CI/CD Pipeline
+name: Internal Network Deployment
 
 on:
   push:
-    branches:
-      - main  # jalankan pipeline saat push ke branch main
+    branches: [ main ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest   # gunakan runner internal GitHub
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Archive Build Artifacts
-        run: tar -czf build-artifact.tar.gz ./
-      
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: php-build
-          path: build-artifact.tar.gz
-
   deploy:
     runs-on: self-hosted
-    needs: build
+    environment: production
+
     steps:
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: php-build
-          path: ./build
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Extract Build
-        run: |
-          tar -xzf ./build/build-artifact.tar.gz -C ./build
+    # Sync files dengan sudo agar punya akses tulis
+    - name: Sync files
+      run: |
+        sudo rsync -avz --delete \
+          --exclude='.env' \
+          --exclude='.git' \
+          --chown=www-data:www-data \
+          ./ /var/www/html/
 
-      - name: Deploy Application
-        run: |
-          echo "Deploying PHP Application..."
-          DEPLOY_PATH=/var/www/html
-
-          rsync -av --delete --exclude='.env' ./build/ $DEPLOY_PATH/
-
-          sudo chown -R www-data:www-data $DEPLOY_PATH
-          sudo chmod -R 755 $DEPLOY_PATH
-
-      - name: Run Migration (Optional)
-        run: |
-          DEPLOY_PATH=/var/www/html
-          if [ -f "$DEPLOY_PATH/artisan" ]; then
-            php $DEPLOY_PATH/artisan migrate --force
-          fi
-
-      - name: Enable & Restart Apache
-        run: |
-          echo "Ensuring Apache is enabled and restarted..."
-          sudo systemctl enable apache2
-          sudo systemctl start apache2
-          sudo systemctl restart apache2
-          sudo systemctl status apache2 --no-pager
+    # Restart service dengan sudo
+    - name: Restart services
+      run: |
+        sudo systemctl restart apache2
