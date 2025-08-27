@@ -1,28 +1,60 @@
-name: Internal Network Deployment
+name: PHP CI/CD Pipeline
 
 on:
   push:
     branches: [ main ]
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: PHP Syntax Check
+        run: |
+          for file in $(find . -name "*.php"); do
+            echo "Checking syntax for $file"
+            php -l "$file"
+          done
+
+      - name: Create build artifact
+        run: tar -czf build.tar.gz ./*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-build
+          path: build.tar.gz
+
   deploy:
     runs-on: self-hosted
     environment: production
-
+    needs: build
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: php-build
+          path: ./build
 
-    # Sync files dengan sudo agar punya akses tulis
-    - name: Sync files
-      run: |
-        sudo rsync -avz --delete \
-          --exclude='.env' \
-          --exclude='.git' \
-          --chown=www-data:www-data \
-          ./ /var/www/html/
+      - name: Extract build
+        run: |
+          mkdir -p ./release
+          tar -xzf ./build/build.tar.gz -C ./release
 
-    # Restart service dengan sudo
-    - name: Restart services
-      run: |
-        sudo systemctl restart apache2
+      - name: Deploy files
+        run: |
+          sudo rsync -avz --delete \
+            --exclude='.git' \
+            --chown=www-data:www-data \
+            ./release/ /var/www/html/
+
+      - name: Restart Apache
+        run: |
+          sudo systemctl restart apache2
